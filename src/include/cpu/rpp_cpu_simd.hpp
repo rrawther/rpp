@@ -496,7 +496,7 @@ inline RppStatus rpp_simd_store(FuncType &&rpp_simd_store_routine, ArgTypes&&...
 #define FP_BITS     16
 #define FP_MUL      (1<<FP_BITS)
 
-const __m128 xmm_full = _mm_set1_ps((float)-1.0);
+const __m128 xmm_full = _mm_set1_ps((float)0xFFFFFFFF);
 const __m128 xmm_sn = _mm_castsi128_ps(_mm_set1_epi32(0x80000000));
 const __m128 xmm_m6 = _mm_set1_ps((float)-6.0);
 const __m128 xmm_eps = _mm_set1_ps((float)1e-9f);
