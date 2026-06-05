@@ -371,6 +371,7 @@ endif()
 add_subdirectory(addkernels)
 
 # Test suite
+option(RPP_BUILD_TESTS "Build RPP test executables" ON)
 enable_testing()
 include(CTest)
 add_subdirectory(utilities/test_suite)

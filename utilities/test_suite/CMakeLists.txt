@@ -83,19 +83,20 @@ List of high level dependency checks - for RPP QA tests in utilities/test_suite/
 ]]
 # Add find modules
 list(APPEND CMAKE_PREFIX_PATH ${ROCM_PATH}/lib/cmake)
-list(APPEND CMAKE_MODULE_PATH ${ROCM_PATH}/share/rpp/test/cmake)
 
-set(RPP_TEST_SCRIPT_DIR "${ROCM_PATH}/share/rpp/test")
-
-# We need to handle the in-tree build of RPP separately since find_package(rpp) will not work.
-if(NOT TARGET rpp)
-    find_package(rpp 3.0.0 REQUIRED)
-    message("-- ${White}${PROJECT_NAME}: rpp found with find_package(rpp REQUIRED)${ColourReset}")
-else()
+if(TARGET rpp)
+    # In-tree build: use source tree cmake modules and script directory
+    list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+    set(RPP_TEST_SCRIPT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
     message("-- ${White}${PROJECT_NAME}: rpp found with target rpp (in-tree build)${ColourReset}")
-    message("-- ${Yellow}${PROJECT_NAME}: Please install RPP before running CTests${ColourReset}")
     set(rpp_AUDIO_AUGMENTATIONS_SUPPORT ${RPP_AUDIO_SUPPORT})
     set(rpp_BACKEND_TYPE ${BACKEND})
+else()
+    # Standalone (post-install) build
+    list(APPEND CMAKE_MODULE_PATH ${ROCM_PATH}/share/rpp/test/cmake)
+    set(RPP_TEST_SCRIPT_DIR "${ROCM_PATH}/share/rpp/test")
+    find_package(rpp 3.0.0 REQUIRED)
+    message("-- ${White}${PROJECT_NAME}: rpp found with find_package(rpp REQUIRED)${ColourReset}")
 endif()
 
 # Display RPP information
@@ -126,14 +127,30 @@ execute_process(
     ERROR_QUIET
 )
 
-# Top-level guards: if any of these are missing, no RPP-ctests can be added at all.
+# In-tree build: compile test executables as part of the main build.
+# This must happen before the Python3/Pandas guards below, since building
+# test executables does not require Python3 or Pandas.
+if(TARGET rpp AND RPP_BUILD_TESTS)
+    add_subdirectory(HOST)
+    if(rpp_BACKEND_TYPE STREQUAL "HIP" AND HIP_FOUND)
+        add_subdirectory(HIP)
+    endif()
+endif()
+
+# Top-level guards: if any of these are missing, no RPP-ctests can be registered.
 if(NOT Python3_FOUND)
     message("-- ${Yellow}Warning: Skipping all RPP-ctest test sets since Python3 is not found!${ColourReset}")
     return()
 endif()
 if(NOT PANDAS_FOUND EQUAL 0)
-    message("-- ${Yellow}Warning: Skipping all RPP-ctest test sets since Pandas is not found!${ColourReset}")
-    return()
+    # Pandas is only required for performance test result reporting.
+    # In-tree builds still register QA tests; standalone builds bail out.
+    if(NOT TARGET rpp)
+        message("-- ${Yellow}Warning: Skipping all RPP-ctest test sets since Pandas is not found!${ColourReset}")
+        return()
+    else()
+        message("-- ${Yellow}Warning: Pandas is not found - performance test reporting will not work${ColourReset}")
+    endif()
 endif()
 if(NOT OpenMP_CXX_FOUND)
     message("-- ${Yellow}Warning: Skipping all RPP-ctest test sets since OpenMP is not found!${ColourReset}")
@@ -143,11 +160,20 @@ endif()
 # Helper to register an RPP QA test. `script_rel_path` is relative to RPP_TEST_SCRIPT_DIR.
 # Extra arguments after `script_rel_path` are passed verbatim to the python script.
 function(rpp_add_qa_test test_name script_rel_path)
-    add_test(
-        NAME ${test_name}
-        COMMAND ${Python3_EXECUTABLE} ${RPP_TEST_SCRIPT_DIR}/${script_rel_path} ${ARGN}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
+    if(TARGET rpp)
+        # In-tree: tell the Python runner to use pre-built binaries from the main build tree
+        add_test(
+            NAME ${test_name}
+            COMMAND ${Python3_EXECUTABLE} ${RPP_TEST_SCRIPT_DIR}/${script_rel_path} --build_dir ${CMAKE_BINARY_DIR} ${ARGN}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        )
+    else()
+        add_test(
+            NAME ${test_name}
+            COMMAND ${Python3_EXECUTABLE} ${RPP_TEST_SCRIPT_DIR}/${script_rel_path} ${ARGN}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        )
+    endif()
 endfunction()
 
 message("-- ${White}${PROJECT_NAME}: Adding RPP HOST tests${ColourReset}")

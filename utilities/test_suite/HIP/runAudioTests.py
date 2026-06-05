@@ -74,14 +74,14 @@ def generate_performance_reports(RESULTS_DIR):
 
 def run_unit_test_cmd(srcPath, case, numRuns, testType, batchSize, outFilePath):
     print("\n./Tensor_audio_hip " + srcPath + " " + str(case) + " " + str(numRuns) + " " + str(testType) + " " + str(numRuns) + " " + str(batchSize))
-    result = subprocess.Popen([buildFolderPath + "/build/Tensor_audio_hip", srcPath, str(case), str(testType), str(numRuns), str(batchSize), outFilePath, scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)    # nosec
+    result = subprocess.Popen([binPathPrefix + "/Tensor_audio_hip", srcPath, str(case), str(testType), str(numRuns), str(batchSize), outFilePath, scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)    # nosec
     log_detected(result, errorLog, audioAugmentationMap[int(case)][0], get_bit_depth(int(BitDepthTestMode.F32_TO_F32.value)), "HIP")
     print("------------------------------------------------------------------------------------------")
 
 def run_performance_test_cmd(loggingFolder, srcPath, case, numRuns, testType, batchSize, outFilePath):
     with open(loggingFolder + "/Tensor_audio_hip_raw_performance_log.txt", "a") as logFile:
         print("./Tensor_audio_hip " + srcPath + " " + str(case) + " " + str(numRuns) + " " + str(testType) + " " + str(numRuns) + " " + str(batchSize))
-        process = subprocess.Popen([buildFolderPath + "/build/Tensor_audio_hip", srcPath, str(case), str(testType), str(numRuns), str(batchSize), outFilePath, scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)    # nosec
+        process = subprocess.Popen([binPathPrefix + "/Tensor_audio_hip", srcPath, str(case), str(testType), str(numRuns), str(batchSize), outFilePath, scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)    # nosec
         read_from_subprocess_and_write_to_log(process, logFile)
         log_detected(process, errorLog, audioAugmentationMap[int(case)][0], get_bit_depth(int(BitDepthTestMode.F32_TO_F32.value)), "HIP")
         print("------------------------------------------------------------------------------------------")
@@ -125,6 +125,7 @@ def rpp_test_suite_parser_and_validator():
     parser.add_argument('--num_runs', type = int, default = 1, help = "Specifies the number of runs for running the performance tests")
     parser.add_argument('--preserve_output', type = int, default = 1, help = "preserves the output of the program - (0 = override output / 1 = preserve output )")
     parser.add_argument('--batch_size', type = int, default = 1, help = "Specifies the batch size to use for running tests. Default is 1.")
+    parser.add_argument('--build_dir', type = str, default = '', help = "Path to the build directory (skips cmake/make when set)")
     print_case_list(audioAugmentationMap, "HIP", parser)
     args = parser.parse_args()
 
@@ -194,6 +195,7 @@ profilingOption = args.profiling
 numRuns = args.num_runs
 preserveOutput = args.preserve_output
 batchSize = args.batch_size
+buildDir = args.build_dir
 outFilePath = " "
 
 # Override testType to 0 if testType is 1 and qaMode is 1
@@ -224,15 +226,17 @@ dstPath = outFilePath
 # Validate DST_FOLDER
 validate_and_remove_files(dstPath)
 
-# Enable extglob
-if os.path.exists(buildFolderPath + "/build"):
-    shutil.rmtree(buildFolderPath + "/build")
-os.makedirs(buildFolderPath + "/build")
-os.chdir(buildFolderPath + "/build")
-
-# Run cmake and make commands
-subprocess.call(["cmake", scriptPath], cwd=".")   # nosec
-subprocess.call(["make", "-j16"], cwd=".")    # nosec
+# Build test executables or use pre-built binaries from --build_dir
+if buildDir:
+    binPathPrefix = os.path.join(buildDir, "bin")
+else:
+    if os.path.exists(buildFolderPath + "/build"):
+        shutil.rmtree(buildFolderPath + "/build")
+    os.makedirs(buildFolderPath + "/build")
+    os.chdir(buildFolderPath + "/build")
+    subprocess.call(["cmake", scriptPath], cwd=".")   # nosec
+    subprocess.call(["make", "-j16"], cwd=".")    # nosec
+    binPathPrefix = buildFolderPath + "/build"
 
 if qaMode and batchSize != 3:
     print("QA tests can only run with a batch size of 3.")

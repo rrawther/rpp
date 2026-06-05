@@ -51,14 +51,14 @@ def get_log_file_list():
 
 def run_unit_test_cmd(headerPath, dataPath, dstPathTemp, layout, case, numRuns, testType, qaMode, batchSize):
     print("\n./Tensor_voxel_host " + headerPath + " " + dataPath + " " + dstPathTemp + " " + str(layout) + " " + str(case) + " " + str(numRuns) + " " + str(testType) + " " + str(qaMode) + " " + str(batchSize) + " " + str(bitDepth.value))
-    result = subprocess.Popen([buildFolderPath + "/build/Tensor_voxel_host", headerPath, dataPath, dstPathTemp, str(layout), str(case), str(numRuns), str(testType), str(qaMode), str(batchSize), str(bitDepth.value), scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE) # nosec
+    result = subprocess.Popen([binPathPrefix + "/Tensor_voxel_host", headerPath, dataPath, dstPathTemp, str(layout), str(case), str(numRuns), str(testType), str(qaMode), str(batchSize), str(bitDepth.value), scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE) # nosec
     log_detected(result, errorLog, voxelAugmentationMap[int(case)][0], get_bit_depth(int(bitDepth.value)), get_voxel_layout_type(layout, "HOST"))
     print("\n------------------------------------------------------------------------------------------")
 
 def run_performance_test_cmd(loggingFolder, logFileLayout, headerPath, dataPath, dstPathTemp, layout, case, numRuns, testType, qaMode, batchSize):
     with open(loggingFolder + "/Tensor_voxel_host_" + logFileLayout + "_raw_performance_log.txt", "a") as logFile:
         logFile.write("./Tensor_voxel_host " + headerPath + " " + dataPath + " " + dstPathTemp + " " + str(layout) + " " + str(case) + " " + str(numRuns) + " " + str(testType) + " " + str(qaMode) + " " + str(batchSize) + " " + str(bitDepth.value) + "\n")
-        process = subprocess.Popen([buildFolderPath + "/build/Tensor_voxel_host", headerPath, dataPath, dstPathTemp, str(layout), str(case), str(numRuns), str(testType), str(qaMode), str(batchSize), str(bitDepth.value), scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE) # nosec
+        process = subprocess.Popen([binPathPrefix + "/Tensor_voxel_host", headerPath, dataPath, dstPathTemp, str(layout), str(case), str(numRuns), str(testType), str(qaMode), str(batchSize), str(bitDepth.value), scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE) # nosec
         while True:
             output = process.stdout.readline()
             if not output and process.poll() is not None:
@@ -98,6 +98,7 @@ def rpp_test_suite_parser_and_validator():
     parser.add_argument('--num_runs', type = int, default = 1, help = "Specifies the number of runs for running the performance tests")
     parser.add_argument('--preserve_output', type = int, default = 1, help = "preserves the output of the program - (0 = override output / 1 = preserve output )" )
     parser.add_argument('--batch_size', type = int, default = 1, help = "Specifies the batch size to use for running tests. Default is 1.")
+    parser.add_argument('--build_dir', type = str, default = '', help = "Path to the build directory (skips cmake/make when set)")
     print_case_list(voxelAugmentationMap, "HOST", parser)
     args = parser.parse_args()
 
@@ -169,6 +170,7 @@ qaMode = args.qa_mode
 numRuns = args.num_runs
 preserveOutput = args.preserve_output
 batchSize = args.batch_size
+buildDir = args.build_dir
 
 if qaMode and os.path.abspath(qaInputFile) != os.path.abspath(headerPath):
     print("QA mode should only run with the given Input path: ", qaInputFile)
@@ -205,15 +207,17 @@ dstPath = outFilePath
 # Validate DST_FOLDER
 validate_and_remove_files(dstPath)
 
-# Enable extglob
-if os.path.exists(buildFolderPath + "/build"):
-    shutil.rmtree(buildFolderPath + "/build")
-os.makedirs(buildFolderPath + "/build")
-os.chdir(buildFolderPath + "/build")
-
-# Run cmake and make commands
-subprocess.call(["cmake", scriptPath], cwd=".")   # nosec
-subprocess.call(["make", "-j16"], cwd=".")  # nosec
+# Build test executables or use pre-built binaries from --build_dir
+if buildDir:
+    binPathPrefix = os.path.join(buildDir, "bin")
+else:
+    if os.path.exists(buildFolderPath + "/build"):
+        shutil.rmtree(buildFolderPath + "/build")
+    os.makedirs(buildFolderPath + "/build")
+    os.chdir(buildFolderPath + "/build")
+    subprocess.call(["cmake", scriptPath], cwd=".")   # nosec
+    subprocess.call(["make", "-j16"], cwd=".")  # nosec
+    binPathPrefix = buildFolderPath + "/build"
 
 bitDepths = [BitDepthTestMode.U8_TO_U8, BitDepthTestMode.F32_TO_F32]
 noCaseSupported = all(int(case) not in voxelAugmentationMap for case in caseList)
