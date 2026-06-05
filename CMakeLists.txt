@@ -247,7 +247,19 @@ if("${BACKEND}" STREQUAL "HIP")
 
     # Set supported GPU Targets
     if(NOT GPU_TARGETS AND NOT AMDGPU_TARGETS)
-        set(DEFAULT_GPU_TARGETS "gfx908;gfx90a;gfx942;gfx1030;gfx1031;gfx1032;gfx1100;gfx1101;gfx1151;gfx1102;gfx950;gfx1200;gfx1201")
+        find_package(ROCmCMakeBuildTools QUIET)
+        if(NOT ROCmCMakeBuildTools_FOUND)
+            find_package(ROCM QUIET)
+        endif()
+        include(ROCMCheckTargetIds OPTIONAL RESULT_VARIABLE HAS_ROCM_CHECK_TARGET_IDS)
+
+        set(OPTIONAL_GPU_TARGETS "gfx1250")
+        if(HAS_ROCM_CHECK_TARGET_IDS)
+            rocm_check_target_ids(OPTIONAL_GPU_TARGETS_AVAILABLE TARGETS ${OPTIONAL_GPU_TARGETS})
+        else() # if we don't have rocm_check_target_ids, just assume the targets are available
+            set(OPTIONAL_GPU_TARGETS_AVAILABLE "${OPTIONAL_GPU_TARGETS}")
+        endif()
+        set(DEFAULT_GPU_TARGETS "gfx908;gfx90a;gfx942;gfx1030;gfx1031;gfx1032;gfx1100;gfx1101;gfx1151;gfx1102;gfx950;gfx1200;gfx1201;${OPTIONAL_GPU_TARGETS_AVAILABLE}")
     endif()
 
     # Set AMD GPU_TARGETS
@@ -485,8 +497,8 @@ set(RPP_DEBIAN_PACKAGE_LIST  "hip-runtime-amd, openmp-extras-runtime")
 set(RPP_RPM_PACKAGE_LIST     "hip-runtime-amd, openmp-extras-runtime")
 set(RPP_DEBIAN_DEV_PACKAGE_LIST  "hip-dev, openmp-extras-dev, half")
 set(RPP_RPM_DEV_PACKAGE_LIST     "hip-devel, openmp-extras-devel, half")
-set(RPP_DEBIAN_TEST_PACKAGE_LIST  "cmake, python3-dev, python3-pip, python3-pandas, python3-openpyxl, libopencv-dev, libsndfile1-dev")
-set(RPP_RPM_TEST_PACKAGE_LIST     "cmake, python3-devel, python3-pip") # TBD: pandas, openpyxl, OpenCV & libsnd packages missing on RPM
+set(RPP_DEBIAN_TEST_PACKAGE_LIST  "cmake, python3-dev, python3-pip, python3-pandas, libopencv-dev, libsndfile1-dev")
+set(RPP_RPM_TEST_PACKAGE_LIST     "cmake, python3-devel, python3-pip") # TBD: pandas, OpenCV & libsnd packages missing on RPM
 
 # Add OS specific dependencies
 if(EXISTS "/etc/os-release")

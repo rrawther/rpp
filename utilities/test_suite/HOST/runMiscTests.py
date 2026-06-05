@@ -62,14 +62,14 @@ def run_unit_test_cmd(numDims, case, numRuns, testType, toggle, batchSize, outFi
             bitDepths = [BitDepthTestMode.U8_TO_U8]
     for bitDepth in bitDepths:
         print("\n./Tensor_misc_host " + str(case) + " " + str(testType) + " " + str(toggle) + " " + str(numDims) + " " + str(batchSize) + " " + str(numRuns) + " " + str(bitDepth) + " " + str(additionalArg))
-        result = subprocess.Popen([binPathPrefix + "/Tensor_misc_host", str(case), str(testType), str(toggle), str(numDims), str(batchSize), str(numRuns), str(bitDepth.value), str(additionalArg), outFilePath, scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # nosec
+        result = subprocess.Popen([buildFolderPath + "/build/Tensor_misc_host", str(case), str(testType), str(toggle), str(numDims), str(batchSize), str(numRuns), str(bitDepth.value), str(additionalArg), outFilePath, scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # nosec
         log_detected(result, errorLog, miscAugmentationMap[int(case)][0], get_bit_depth(int(bitDepth.value)), get_misc_func_name(int(case), numDims, additionalArg))
         print("------------------------------------------------------------------------------------------")
 
 def run_performance_test_cmd(loggingFolder, numDims, case, numRuns, testType, toggle, batchSize, bitDepth, outFilePath, additionalArg):
     with open(loggingFolder + "/Tensor_misc_host_raw_performance_log.txt", "a") as logFile:
         logFile.write("./Tensor_misc_host " + str(case) + " " + str(testType) + " " + str(toggle) + " " + str(numDims) + " " + str(batchSize) + " " + str(numRuns) + " " + str(bitDepth) + " " + str(additionalArg) + "\n")
-        process = subprocess.Popen([binPathPrefix + "/Tensor_misc_host", str(case), str(testType), str(toggle), str(numDims), str(batchSize), str(numRuns), str(bitDepth), str(additionalArg), outFilePath, scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # nosec
+        process = subprocess.Popen([buildFolderPath + "/build/Tensor_misc_host", str(case), str(testType), str(toggle), str(numDims), str(batchSize), str(numRuns), str(bitDepth), str(additionalArg), outFilePath, scriptPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)  # nosec
         read_from_subprocess_and_write_to_log(process, logFile)
         log_detected(process, errorLog, miscAugmentationMap[int(case)][0], get_bit_depth(int(bitDepth)), get_misc_func_name(int(case), numDims, additionalArg))
 
@@ -114,7 +114,6 @@ def rpp_test_suite_parser_and_validator():
     parser.add_argument('--batch_size', type = int, default = 1, help = "Specifies the batch size to use for running tests. Default is 1.")
     parser.add_argument('--broadcast', type = int, nargs = "+", default = [0, 1, 2], help = "Specifies the broadcast mode to be used (0 = Non-broadcast / 1 = second tensor broadcasted / 2 = First tensor broadcasted). Default is [0, 1, 2].")
     parser.add_argument('--preserve_output', type = int, default = 1, help = "preserves the output of the program - (0 = override output / 1 = preserve output )" )
-    parser.add_argument('--build_dir', type = str, default = '', help = "Path to the build directory (skips cmake/make when set)")
     print_case_list(miscAugmentationMap, "HOST", parser)
     args = parser.parse_args()
 
@@ -176,7 +175,6 @@ if qaMode:
     testType = 0
 broadcast = args.broadcast
 preserveOutput = args.preserve_output
-buildDir = args.build_dir
 outFilePath = " "
 
 if testType == TestType.UNIT_TEST.value and batchSize != 3:
@@ -201,17 +199,14 @@ os.mkdir(outFilePath)
 loggingFolder = outFilePath
 dstPath = outFilePath
 
-# Build test executables or use pre-built binaries from --build_dir
-if buildDir:
-    binPathPrefix = os.path.join(buildDir, "bin")
-else:
-    if os.path.exists(buildFolderPath + "/build"):
-        shutil.rmtree(buildFolderPath + "/build")
-    os.makedirs(buildFolderPath + "/build")
-    os.chdir(buildFolderPath + "/build")
-    subprocess.call(["cmake", scriptPath], cwd=".")   # nosec
-    subprocess.call(["make", "-j16"], cwd=".")    # nosec
-    binPathPrefix = buildFolderPath + "/build"
+# Enable extglob
+if os.path.exists(buildFolderPath + "/build"):
+    shutil.rmtree(buildFolderPath + "/build")
+os.makedirs(buildFolderPath + "/build")
+os.chdir(buildFolderPath + "/build")
+
+# Run cmake and make commands
+run_cmake_build(scriptPath)
 
 supportedCaseList = [key for key, values in miscAugmentationMap.items() if "HOST" in values]
 noCaseSupported = all(int(case) not in supportedCaseList for case in caseList)
